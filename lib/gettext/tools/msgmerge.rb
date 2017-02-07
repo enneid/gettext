@@ -29,6 +29,13 @@ require "gettext/po"
 module GetText
   module Tools
     class MsgMerge
+
+      class Error < StandardError
+      end
+
+      class ArgumentError < Error
+      end
+
       class << self
         # (see #run)
         #
@@ -39,35 +46,46 @@ module GetText
         end
       end
 
+      attr_reader :config
+
+      def initialize
+        @config = Config.new
+      end
+
       # Merge a po-file inluding translated messages and a new pot-file.
       #
       # @param [Array<String>] command_line
       #   command line arguments for rmsgmerge.
       # @return [void]
       def run(*command_line)
-        config = Config.new
+
         config.parse(command_line)
 
+        result = merge_po
+
+        if config.output.is_a?(String)
+          File.open(File.expand_path(config.output), "w+") do |file|
+            file.write(result)
+          end
+        else
+          puts(result)
+        end
+      end
+
+
+      def merge_po(po_content: nil, pot_content: nil)
         parser = POParser.new
         parser.ignore_fuzzy = false
-        definition_po = PO.new
-        reference_pot = PO.new
-        parser.parse_file(config.definition_po, definition_po)
-        parser.parse_file(config.reference_pot, reference_pot)
-
-        merger = Merger.new(reference_pot, definition_po, config)
+        raise ArgumentError, "need specify reference pot" if pot_content.nil? && config.reference_pot.nil?
+        raise ArgumentError, "need specify definition po" if po_content.nil? && config.definition_po.nil?
+        pot = pot_content.nil? ? parser.parse_file(config.reference_pot, GetText::PO.new) : parser.parse(pot_content, GetText::PO.new)
+        po = po_content.nil? ? parser.parse_file(config.definition_po, GetText::PO.new) : parser.parse(po_content, GetText::PO.new)
+        merger = Merger.new(pot, po, config)
         result = merger.merge
         result.order = config.order
         p result if $DEBUG
         print result.generate_po if $DEBUG
-
-        if config.output.is_a?(String)
-          File.open(File.expand_path(config.output), "w+") do |file|
-            file.write(result.to_s(config.po_format_options))
-          end
-        else
-          puts(result.to_s(config.po_format_options))
-        end
+        result.to_s(config.po_format_options)
       end
 
       # @private

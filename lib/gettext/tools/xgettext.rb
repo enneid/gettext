@@ -71,7 +71,8 @@ module GetText
       #   are depend on each parser.
       # @see RubyParser#parse
       # @see ErbParser#parse
-      attr_reader :parse_options
+
+      attr_accessor :package_name, :package_version, :msgid_bugs_address, :copyright_holder,  :parse_options, :po_order, :po_format_options
 
       def initialize #:nodoc:
         @parsers = @@default_parsers.dup
@@ -174,6 +175,21 @@ module GetText
         po
       end
 
+      def generate_pot(paths) # :nodoc:
+        header = POEntry.new(:normal)
+        header.msgid = ""
+        header.msgstr = header_content
+        header.translator_comment = header_comment
+        header.flags << "fuzzy"
+
+        po = parse(paths)
+        po.order = @po_order
+        po[header.msgid] = header
+
+        to_s_options = @po_format_options.merge(:encoding => @output_encoding)
+        po.to_s(to_s_options)
+      end
+
       private
       def now
         Time.now
@@ -207,20 +223,7 @@ Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;
         CONTENT
       end
 
-      def generate_pot(paths) # :nodoc:
-        header = POEntry.new(:normal)
-        header.msgid = ""
-        header.msgstr = header_content
-        header.translator_comment = header_comment
-        header.flags << "fuzzy"
 
-        po = parse(paths)
-        po.order = @po_order
-        po[header.msgid] = header
-
-        to_s_options = @po_format_options.merge(:encoding => @output_encoding)
-        po.to_s(to_s_options)
-      end
 
       def check_command_line_options(*options) # :nodoc:
         input_files, output = parse_arguments(*options)

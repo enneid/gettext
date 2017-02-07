@@ -51,6 +51,8 @@ module GetText
 
       bindtextdomain("gettext")
 
+      attr_accessor :input_file, :locale, :language, :entry, :comment, :translator_name, :translator_email, :set_translator, :enable_prompt
+
       def initialize
         @input_file = nil
         @output_file = nil
@@ -60,8 +62,9 @@ module GetText
         @comment = nil
         @translator = nil
         @set_translator = true
+        @enable_prompt = true
         @translator_name = nil
-        @translator_eamil = nil
+        @translator_email = nil
       end
 
       # Create .po file from .pot file, user's inputs and metadata.
@@ -69,15 +72,21 @@ module GetText
       def run(*arguments)
         parse_arguments(*arguments)
         validate
+        po = generate_po file: @input_file
+        File.open(@output_file, "w") do |f|
+          f.puts(po)
+        end
+      end
 
+
+      def generate_po(file: nil, content: nil, init_locale: false)
+        raise ArgumentError, "need specify file or content" if file.nil? && content.nil?
+
+        validate_locale if init_locale
         parser = POParser.new
         parser.ignore_fuzzy = false
-        pot = parser.parse_file(@input_file, GetText::PO.new)
-        po = replace_pot_header(pot)
-
-        File.open(@output_file, "w") do |f|
-          f.puts(po.to_s)
-        end
+        pot = content.nil? ? parser.parse_file(@input_file, GetText::PO.new) : parser.parse(content, GetText::PO.new)
+        replace_pot_header(pot).to_s
       end
 
       private
@@ -146,6 +155,22 @@ module GetText
         end
       end
 
+      def validate_locale
+        if @locale.nil?
+          language_tag = Locale.current
+        else
+          language_tag = Locale::Tag.parse(@locale)
+        end
+
+        unless valid_locale?(language_tag)
+          raise(ValidationError,
+                _("Locale '#{language_tag}' is invalid. " +
+                      "Please check if your specified locale is usable."))
+        end
+        @locale = language_tag.to_simple.to_s
+        @language = language_tag.language
+      end
+
       def validate
         if @input_file.nil?
           @input_file = Dir.glob("./*.pot").first
@@ -159,20 +184,8 @@ module GetText
                   _("file '%s' does not exist." % @input_file))
           end
         end
+        validate_locale
 
-        if @locale.nil?
-          language_tag = Locale.current
-        else
-          language_tag = Locale::Tag.parse(@locale)
-        end
-
-        unless valid_locale?(language_tag)
-          raise(ValidationError,
-                _("Locale '#{language_tag}' is invalid. " +
-                    "Please check if your specified locale is usable."))
-        end
-        @locale = language_tag.to_simple.to_s
-        @language = language_tag.language
 
         @output_file ||= "#{@locale}.po"
         if File.exist?(@output_file)
@@ -256,6 +269,7 @@ module GetText
       end
 
       def prompt(message, default)
+        return default unless enable_prompt
         print(message)
         print(" [#{default}]") if default
         print(": ")
